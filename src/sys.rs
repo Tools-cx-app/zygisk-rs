@@ -1,6 +1,6 @@
 use std::ffi::{c_char, c_int, c_long, c_void};
 
-use jni_sys::{jboolean, jint, jintArray, jlong, jobjectArray, jstring, JNIEnv, JNINativeMethod};
+use jni_sys::{JNIEnv, JNINativeMethod, jboolean, jint, jintArray, jlong, jobjectArray, jstring};
 
 #[cfg(feature = "v2")]
 pub const ZYGISK_API_VERSION: c_long = 2;

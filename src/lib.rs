@@ -1,5 +1,5 @@
 use std::{
-    ffi::{c_int, c_void, CString},
+    ffi::{CString, c_int, c_void},
     os::{
         fd::{FromRawFd, OwnedFd},
         unix::net::UnixStream,
@@ -41,9 +41,9 @@ unsafe impl Send for Api {}
 unsafe impl Sync for Api {}
 
 impl Api {
-    unsafe fn new(table: *const sys::ApiTable) -> Api { unsafe {
-        Api { table: &*table }
-    }}
+    unsafe fn new(table: *const sys::ApiTable) -> Api {
+        unsafe { Api { table: &*table } }
+    }
 }
 
 impl Api {
@@ -51,11 +51,7 @@ impl Api {
         unsafe {
             if let Some(c) = self.table.connect_companion {
                 let fd = c(self.table.api_impl);
-                if fd >= 0 {
-                    Some(UnixStream::from_raw_fd(fd))
-                } else {
-                    None
-                }
+                if fd >= 0 { Some(UnixStream::from_raw_fd(fd)) } else { None }
             } else {
                 None
             }
@@ -66,11 +62,7 @@ impl Api {
         unsafe {
             if let Some(f) = self.table.get_module_dir {
                 let fd = f(self.table.api_impl);
-                if fd >= 0 {
-                    Some(OwnedFd::from_raw_fd(fd))
-                } else {
-                    None
-                }
+                if fd >= 0 { Some(OwnedFd::from_raw_fd(fd)) } else { None }
             } else {
                 None
             }
@@ -156,18 +148,12 @@ impl Api {
 
     #[cfg(feature = "v4")]
     pub fn exempt_fd(&self, fd: std::os::fd::RawFd) -> bool {
-        unsafe {
-            if let Some(f) = self.table.exempt_fd {
-                f(fd)
-            } else {
-                false
-            }
-        }
+        unsafe { if let Some(f) = self.table.exempt_fd { f(fd) } else { false } }
     }
 
     pub unsafe fn plt_hook_commit(&self) -> bool {
         if let Some(f) = self.table.plt_hook_commit {
-           unsafe{ f()}
+            unsafe { f() }
         } else {
             false
         }
@@ -204,60 +190,72 @@ macro_rules! register_zygisk_companion {
 }
 
 #[doc(hidden)]
-pub unsafe fn _module_entry<M: Module>(api_table: *mut sys::ApiTable, env: *mut JNIEnv) { unsafe {
-    let module_abi = sys::ModuleAbi {
-        api_version: sys::ZYGISK_API_VERSION,
-        module_impl: null_mut(),
-        pre_app_specialize: {
-            unsafe extern "C" fn func<M: Module>(this: *mut c_void, args: *mut AppSpecializeArgs) { unsafe {
-                if let Some(this) = this.cast::<M>().as_mut() {
-                    this.pre_app_specialize(&mut *args);
+pub unsafe fn _module_entry<M: Module>(api_table: *mut sys::ApiTable, env: *mut JNIEnv) {
+    unsafe {
+        let module_abi = sys::ModuleAbi {
+            api_version: sys::ZYGISK_API_VERSION,
+            module_impl: null_mut(),
+            pre_app_specialize: {
+                unsafe extern "C" fn func<M: Module>(this: *mut c_void, args: *mut AppSpecializeArgs) {
+                    unsafe {
+                        if let Some(this) = this.cast::<M>().as_mut() {
+                            this.pre_app_specialize(&mut *args);
+                        }
+                    }
                 }
-            }}
 
-            func::<M>
-        },
-        post_app_specialize: {
-            unsafe extern "C" fn func<M: Module>(this: *mut c_void, args: *const AppSpecializeArgs) { unsafe {
-                if let Some(this) = this.cast::<M>().as_mut() {
-                    this.post_app_specialize(&*args);
+                func::<M>
+            },
+            post_app_specialize: {
+                unsafe extern "C" fn func<M: Module>(this: *mut c_void, args: *const AppSpecializeArgs) {
+                    unsafe {
+                        if let Some(this) = this.cast::<M>().as_mut() {
+                            this.post_app_specialize(&*args);
+                        }
+                    }
                 }
-            }}
 
-            func::<M>
-        },
-        pre_server_specialize: {
-            unsafe extern "C" fn func<M: Module>(this: *mut c_void, args: *mut ServerSpecializeArgs) { unsafe {
-                if let Some(this) = this.cast::<M>().as_mut() {
-                    this.pre_server_specialize(&mut *args);
+                func::<M>
+            },
+            pre_server_specialize: {
+                unsafe extern "C" fn func<M: Module>(this: *mut c_void, args: *mut ServerSpecializeArgs) {
+                    unsafe {
+                        if let Some(this) = this.cast::<M>().as_mut() {
+                            this.pre_server_specialize(&mut *args);
+                        }
+                    }
                 }
-            }}
 
-            func::<M>
-        },
-        post_server_specialize: {
-            unsafe extern "C" fn func<M: Module>(this: *mut c_void, args: *const ServerSpecializeArgs) { unsafe {
-                if let Some(this) = this.cast::<M>().as_mut() {
-                    this.post_server_specialize(&*args);
+                func::<M>
+            },
+            post_server_specialize: {
+                unsafe extern "C" fn func<M: Module>(this: *mut c_void, args: *const ServerSpecializeArgs) {
+                    unsafe {
+                        if let Some(this) = this.cast::<M>().as_mut() {
+                            this.post_server_specialize(&*args);
+                        }
+                    }
                 }
-            }}
 
-            func::<M>
-        },
-    };
+                func::<M>
+            },
+        };
 
-    let module_table = Box::into_raw(Box::new(module_abi));
-    if ((*api_table).register_module)(api_table, module_table) == 0 {
-        return;
+        let module_table = Box::into_raw(Box::new(module_abi));
+        if ((*api_table).register_module)(api_table, module_table) == 0 {
+            return;
+        }
+
+        (*module_table).module_impl = Box::into_raw(Box::new(M::new(Api::new(api_table), env))).cast();
     }
-
-    (*module_table).module_impl = Box::into_raw(Box::new(M::new(Api::new(api_table), env))).cast();
-}}
+}
 
 #[doc(hidden)]
 pub unsafe fn _companion_entry(client: c_int, handler: fn(stream: UnixStream)) {
-   unsafe{ let nfd = libc::dup(client);
-    if nfd >= 0 {
-         handler(UnixStream::from_raw_fd(nfd))
-    }}
+    unsafe {
+        let nfd = libc::dup(client);
+        if nfd >= 0 {
+            handler(UnixStream::from_raw_fd(nfd))
+        }
+    }
 }
