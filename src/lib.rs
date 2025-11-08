@@ -41,9 +41,9 @@ unsafe impl Send for Api {}
 unsafe impl Sync for Api {}
 
 impl Api {
-    unsafe fn new(table: *const sys::ApiTable) -> Api {
+    unsafe fn new(table: *const sys::ApiTable) -> Api { unsafe {
         Api { table: &*table }
-    }
+    }}
 }
 
 impl Api {
@@ -167,7 +167,7 @@ impl Api {
 
     pub unsafe fn plt_hook_commit(&self) -> bool {
         if let Some(f) = self.table.plt_hook_commit {
-            f()
+           unsafe{ f()}
         } else {
             false
         }
@@ -204,43 +204,43 @@ macro_rules! register_zygisk_companion {
 }
 
 #[doc(hidden)]
-pub unsafe fn _module_entry<M: Module>(api_table: *mut sys::ApiTable, env: *mut JNIEnv) {
+pub unsafe fn _module_entry<M: Module>(api_table: *mut sys::ApiTable, env: *mut JNIEnv) { unsafe {
     let module_abi = sys::ModuleAbi {
         api_version: sys::ZYGISK_API_VERSION,
         module_impl: null_mut(),
         pre_app_specialize: {
-            unsafe extern "C" fn func<M: Module>(this: *mut c_void, args: *mut AppSpecializeArgs) {
+            unsafe extern "C" fn func<M: Module>(this: *mut c_void, args: *mut AppSpecializeArgs) { unsafe {
                 if let Some(this) = this.cast::<M>().as_mut() {
                     this.pre_app_specialize(&mut *args);
                 }
-            }
+            }}
 
             func::<M>
         },
         post_app_specialize: {
-            unsafe extern "C" fn func<M: Module>(this: *mut c_void, args: *const AppSpecializeArgs) {
+            unsafe extern "C" fn func<M: Module>(this: *mut c_void, args: *const AppSpecializeArgs) { unsafe {
                 if let Some(this) = this.cast::<M>().as_mut() {
                     this.post_app_specialize(&*args);
                 }
-            }
+            }}
 
             func::<M>
         },
         pre_server_specialize: {
-            unsafe extern "C" fn func<M: Module>(this: *mut c_void, args: *mut ServerSpecializeArgs) {
+            unsafe extern "C" fn func<M: Module>(this: *mut c_void, args: *mut ServerSpecializeArgs) { unsafe {
                 if let Some(this) = this.cast::<M>().as_mut() {
                     this.pre_server_specialize(&mut *args);
                 }
-            }
+            }}
 
             func::<M>
         },
         post_server_specialize: {
-            unsafe extern "C" fn func<M: Module>(this: *mut c_void, args: *const ServerSpecializeArgs) {
+            unsafe extern "C" fn func<M: Module>(this: *mut c_void, args: *const ServerSpecializeArgs) { unsafe {
                 if let Some(this) = this.cast::<M>().as_mut() {
                     this.post_server_specialize(&*args);
                 }
-            }
+            }}
 
             func::<M>
         },
@@ -252,12 +252,12 @@ pub unsafe fn _module_entry<M: Module>(api_table: *mut sys::ApiTable, env: *mut 
     }
 
     (*module_table).module_impl = Box::into_raw(Box::new(M::new(Api::new(api_table), env))).cast();
-}
+}}
 
 #[doc(hidden)]
 pub unsafe fn _companion_entry(client: c_int, handler: fn(stream: UnixStream)) {
-    let nfd = libc::dup(client);
+   unsafe{ let nfd = libc::dup(client);
     if nfd >= 0 {
-        handler(UnixStream::from_raw_fd(nfd))
-    }
+         handler(UnixStream::from_raw_fd(nfd))
+    }}
 }
