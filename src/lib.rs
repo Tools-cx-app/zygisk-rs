@@ -104,17 +104,13 @@ impl Api {
         env: *mut JNIEnv,
         class_name: impl AsRef<str>,
         mut methods: impl AsMut<[JNINativeMethod]>,
+        len: c_int,
     ) {
         unsafe {
             if let Some(f) = self.table.hook_jni_native_methods {
                 let class_name = CString::new(class_name.as_ref()).unwrap();
 
-                f(
-                    env,
-                    class_name.as_ptr(),
-                    methods.as_mut().as_mut_ptr(),
-                    methods.as_mut().len() as c_int,
-                );
+                f(env, class_name.as_ptr(), methods.as_mut().as_mut_ptr(), len);
             }
         }
     }
