@@ -1,16 +1,15 @@
-#![no_std]
-
-extern crate alloc;
-
-use alloc::{boxed::Box, ffi::CString};
-use core::{
-    ffi::{c_int, c_void},
+use std::{
+    ffi::{c_int, c_void, CString},
+    os::{
+        fd::{FromRawFd, OwnedFd},
+        unix::net::UnixStream,
+    },
     ptr::null_mut,
 };
 
-use rustix::fd::{BorrowedFd, FromRawFd, OwnedFd};
+use jni_sys::{JNIEnv, JNINativeMethod};
+
 pub use sys::{AppSpecializeArgs, ServerSpecializeArgs};
-use typed_jni::Context;
 
 mod sys;
 
@@ -48,12 +47,12 @@ impl Api {
 }
 
 impl Api {
-    pub fn connect_companion(&self) -> Option<OwnedFd> {
+    pub fn connect_companion(&self) -> Option<UnixStream> {
         unsafe {
             if let Some(c) = self.table.connect_companion {
                 let fd = c(self.table.api_impl);
                 if fd >= 0 {
-                    Some(OwnedFd::from_raw_fd(fd))
+                    Some(UnixStream::from_raw_fd(fd))
                 } else {
                     None
                 }
@@ -100,18 +99,18 @@ impl Api {
         }
     }
 
-    pub unsafe fn hook_jni_native_methods(
+    pub fn hook_jni_native_methods(
         &self,
-        ctx: &Context,
+        env: *mut JNIEnv,
         class_name: impl AsRef<str>,
-        mut methods: impl AsMut<[typed_jni::sys::JNINativeMethod]>,
+        mut methods: impl AsMut<[JNINativeMethod]>,
     ) {
         unsafe {
             if let Some(f) = self.table.hook_jni_native_methods {
                 let class_name = CString::new(class_name.as_ref()).unwrap();
 
                 f(
-                    ctx.as_raw(),
+                    env,
                     class_name.as_ptr(),
                     methods.as_mut().as_mut_ptr(),
                     methods.as_mut().len() as c_int,
@@ -160,7 +159,7 @@ impl Api {
     }
 
     #[cfg(feature = "v4")]
-    pub fn exempt_fd(&self, fd: rustix::fd::RawFd) -> bool {
+    pub fn exempt_fd(&self, fd: std::os::fd::RawFd) -> bool {
         unsafe {
             if let Some(f) = self.table.exempt_fd {
                 f(fd)
@@ -179,20 +178,20 @@ impl Api {
     }
 }
 
-pub trait Module<'a> {
-    fn new(api: Api, ctx: &'a Context) -> Self;
+pub trait Module {
+    fn new(api: Api, env: *mut JNIEnv) -> Self;
 
-    fn pre_app_specialize(&mut self, args: &mut AppSpecializeArgs<'a>);
-    fn post_app_specialize(&mut self, args: &AppSpecializeArgs<'a>);
-    fn pre_server_specialize(&mut self, args: &mut ServerSpecializeArgs<'a>);
-    fn post_server_specialize(&mut self, args: &ServerSpecializeArgs<'a>);
+    fn pre_app_specialize(&mut self, args: &mut AppSpecializeArgs);
+    fn post_app_specialize(&mut self, args: &AppSpecializeArgs);
+    fn pre_server_specialize(&mut self, args: &mut ServerSpecializeArgs);
+    fn post_server_specialize(&mut self, args: &ServerSpecializeArgs);
 }
 
 #[macro_export]
 macro_rules! register_zygisk_module {
     ($module:ty) => {
         #[no_mangle]
-        pub unsafe extern "C" fn zygisk_module_entry(api_table: *mut (), env: *mut ()) {
+        pub unsafe extern "C" fn zygisk_module_entry(api_table: *mut ::std::ffi::c_void, env: *mut ::jni_sys::JNIEnv) {
             $crate::_module_entry::<$module>(api_table.cast(), env)
         }
     };
@@ -202,48 +201,48 @@ macro_rules! register_zygisk_module {
 macro_rules! register_zygisk_companion {
     ($handler:path) => {
         #[no_mangle]
-        pub unsafe extern "C" fn zygisk_companion_entry(client: i32) {
+        pub unsafe extern "C" fn zygisk_companion_entry(client: ::std::ffi::c_int) {
             $crate::_companion_entry(client, $handler)
         }
     };
 }
 
 #[doc(hidden)]
-pub unsafe fn _module_entry<'a, M: Module<'a>>(api_table: *mut (), env: *mut ()) {
+pub unsafe fn _module_entry<M: Module>(api_table: *mut sys::ApiTable, env: *mut JNIEnv) {
     let module_abi = sys::ModuleAbi {
         api_version: sys::ZYGISK_API_VERSION,
         module_impl: null_mut(),
         pre_app_specialize: {
-            unsafe extern "C" fn func<'a, M: Module<'a>>(this: *mut c_void, args: *mut AppSpecializeArgs) {
+            unsafe extern "C" fn func<M: Module>(this: *mut c_void, args: *mut AppSpecializeArgs) {
                 if let Some(this) = this.cast::<M>().as_mut() {
-                    this.pre_app_specialize(core::mem::transmute(args));
+                    this.pre_app_specialize(&mut *args);
                 }
             }
 
             func::<M>
         },
         post_app_specialize: {
-            unsafe extern "C" fn func<'a, M: Module<'a>>(this: *mut c_void, args: *const AppSpecializeArgs) {
+            unsafe extern "C" fn func<M: Module>(this: *mut c_void, args: *const AppSpecializeArgs) {
                 if let Some(this) = this.cast::<M>().as_mut() {
-                    this.post_app_specialize(core::mem::transmute(args));
+                    this.post_app_specialize(&*args);
                 }
             }
 
             func::<M>
         },
         pre_server_specialize: {
-            unsafe extern "C" fn func<'a, M: Module<'a>>(this: *mut c_void, args: *mut ServerSpecializeArgs) {
+            unsafe extern "C" fn func<M: Module>(this: *mut c_void, args: *mut ServerSpecializeArgs) {
                 if let Some(this) = this.cast::<M>().as_mut() {
-                    this.pre_server_specialize(core::mem::transmute(args));
+                    this.pre_server_specialize(&mut *args);
                 }
             }
 
             func::<M>
         },
         post_server_specialize: {
-            unsafe extern "C" fn func<'a, M: Module<'a>>(this: *mut c_void, args: *const ServerSpecializeArgs) {
+            unsafe extern "C" fn func<M: Module>(this: *mut c_void, args: *const ServerSpecializeArgs) {
                 if let Some(this) = this.cast::<M>().as_mut() {
-                    this.post_server_specialize(core::mem::transmute(args));
+                    this.post_server_specialize(&*args);
                 }
             }
 
@@ -251,16 +250,18 @@ pub unsafe fn _module_entry<'a, M: Module<'a>>(api_table: *mut (), env: *mut ())
         },
     };
 
-    let api_table = &mut *api_table.cast::<sys::ApiTable>();
     let module_table = Box::into_raw(Box::new(module_abi));
     if ((*api_table).register_module)(api_table, module_table) == 0 {
         return;
     }
 
-    (*module_table).module_impl = Box::into_raw(Box::new(M::new(Api::new(api_table), Context::from_raw(env.cast())))).cast();
+    (*module_table).module_impl = Box::into_raw(Box::new(M::new(Api::new(api_table), env))).cast();
 }
 
 #[doc(hidden)]
-pub unsafe fn _companion_entry(client: c_int, handler: for<'fd> fn(stream: BorrowedFd<'fd>)) {
-    handler(BorrowedFd::borrow_raw(client))
+pub unsafe fn _companion_entry(client: c_int, handler: fn(stream: UnixStream)) {
+    let nfd = libc::dup(client);
+    if nfd >= 0 {
+        handler(UnixStream::from_raw_fd(nfd))
+    }
 }

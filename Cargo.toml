@@ -12,6 +12,5 @@ v4 = []
 default = ["v2"]
 
 [dependencies]
-typed-jni = { git = "https://github.com/Kr328/typed-jni-rs.git", default-features = false }
+jni-sys = "0.4"
 libc = "0.2"
-rustix = "0.38"
