@@ -91,17 +91,18 @@ impl Api {
         }
     }
 
-    pub fn hook_jni_native_methods(
+    /// # Safety
+    pub unsafe fn hook_jni_native_methods(
         &self,
         env: *mut JNIEnv,
         class_name: impl AsRef<str>,
         mut methods: impl AsMut<[JNINativeMethod]>,
         len: c_int,
     ) {
-        unsafe {
-            if let Some(f) = self.table.hook_jni_native_methods {
-                let class_name = CString::new(class_name.as_ref()).unwrap();
+        if let Some(f) = self.table.hook_jni_native_methods {
+            let class_name = CString::new(class_name.as_ref()).unwrap();
 
+            unsafe {
                 f(env, class_name.as_ptr(), methods.as_mut().as_mut_ptr(), len);
             }
         }
@@ -151,7 +152,7 @@ impl Api {
         unsafe { if let Some(f) = self.table.exempt_fd { f(fd) } else { false } }
     }
 
-    pub unsafe fn plt_hook_commit(&self) -> bool {
+    pub fn plt_hook_commit(&self) -> bool {
         if let Some(f) = self.table.plt_hook_commit {
             unsafe { f() }
         } else {
