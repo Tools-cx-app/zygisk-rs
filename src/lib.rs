@@ -182,7 +182,7 @@ macro_rules! register_zygisk_module {
 #[macro_export]
 macro_rules! register_zygisk_companion {
     ($handler:path) => {
-        #[no_mangle]
+        #[unsafe(no_mangle)]
         pub unsafe extern "C" fn zygisk_companion_entry(client: ::std::ffi::c_int) {
             $crate::_companion_entry(client, $handler)
         }
