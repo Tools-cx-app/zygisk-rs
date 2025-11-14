@@ -7,7 +7,7 @@ use std::{
     ptr::null_mut,
 };
 
-use jni_sys::{JNIEnv, JNINativeMethod};
+use jni::sys::{JNIEnv, JNINativeMethod};
 
 pub use sys::{AppSpecializeArgs, ServerSpecializeArgs};
 
