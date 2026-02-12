@@ -174,7 +174,7 @@ pub trait Module {
 macro_rules! register_zygisk_module {
     ($module:ty) => {
         #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn zygisk_module_entry(api_table: *mut ::std::ffi::c_void, env: *mut ::jni_sys::JNIEnv) {
+        pub unsafe extern "C" fn zygisk_module_entry(api_table: *mut ::std::ffi::c_void, env: *mut ::jni::sys::JNIEnv) {
             $crate::_module_entry::<$module>(api_table.cast(), env)
         }
     };
